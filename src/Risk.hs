@@ -62,9 +62,6 @@ invade b@(Battle a d p)
   | a < 2 || d == 0 = [b]
   | otherwise = tconcat $ map invade $ attack b
 
-minvade :: Timestream -> Timestream
-minvade bs = tconcat [invade b | b <- bs]
-
 campaign :: Army -> [Army] -> Timestream -> [Timestream]
 campaign att def [] = campaign att def [Battle (att+1) 0 1]
 campaign _ [] _ = []
@@ -73,11 +70,6 @@ campaign attackers (defenders:ds) t =
   where res = tconcat [invade $ Battle ((a b)-1) defenders (p b) | b <- t]
 
 success (Battle _ d _) = (d==0)
-
-successProb :: Army -> Army -> Double
-successProb a d = sum [p b | b <- wins]
-  where
-    wins = filter success $ invade $ Battle a d 1
 
 results :: [Timestream] -> [Double]
 results = map (\t -> sum [p b | b <- (filter success t)])
@@ -89,5 +81,5 @@ results = map (\t -> sum [p b | b <- (filter success t)])
 --   putStr "Defenders: "
 --   d <- readLn
 --   putStr "Chance of Success: "
---   putStrLn $ show $ successProb a d
+ --  putStrLn $ show $ results $ campaign a [d] []
 
