@@ -31,5 +31,5 @@ riskHandler = do
     a <- getParam "a"
     d <- getParam "d"
     let f x = read $ BS.unpack $ fromMaybe "1" x
-    writeBS $ BS.pack $ show $ exactSuccessProb $ Battlefield (f a) (f d)
+    writeBS $ BS.pack $ show $ results $ campaign (f a) [(f d)] []
 

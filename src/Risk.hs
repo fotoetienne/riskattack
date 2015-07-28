@@ -1,71 +1,44 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Risk where
 
--- import Control.Monad.Random
 import Data.List
+import Data.Monoid
 
-------------------------------------------------------------
--- Die values
-
--- newtype DieValue = DV { unDV :: Int }
---   deriving (Eq, Ord, Show, Num)
-
--- first :: (a -> b) -> (a, c) -> (b, c)
--- first f (a, c) = (f a, c)
-
--- instance Random DieValue where
---   random           = first DV . randomR (1,6)
---   randomR (low,hi) = first DV . randomR (max 1 (unDV low), min 6 (unDV hi))
-
--- die :: Rand StdGen DieValue
--- die = getRandom
-
-------------------------------------------------------------
--- Risk
--- Ex2 --
 type Army = Int
-
-data Battlefield = Battlefield { attackers :: Army, defenders :: Army }
-  deriving (Show)
-
--- -- Rolls n dice and sorts them in descending order
--- dice ::  Int -> Rand StdGen [DieValue]
--- dice n = do
---   d <- sequence $ replicate n die
---   return $ reverse $ sort $ d
-
--- -- Returns result of single pair of dice
--- attack :: Battlefield -> (DieValue,DieValue) -> Battlefield
--- attack b (dieA, dieD)
---   | dieA > dieD = b {defenders = defenders b - 1}
---   | otherwise   = b {attackers = attackers b - 1}
-
--- battle :: Battlefield -> Rand StdGen Battlefield
--- battle b = do
---   diceA <- dice $ min 3 (attackers b - 1)
---   diceD <- dice $ min 2 (defenders b)
---   return $ foldl attack b $ zip diceA diceD
-
--- -- Ex3 --
--- invade :: Battlefield -> Rand StdGen Battlefield
--- invade b@(Battlefield a d)
---   | a < 2 || d == 0 = return b
---   | otherwise       = battle b >>= invade
-
--- -- Ex4 --
--- successProb :: Battlefield -> Rand StdGen Double
--- successProb b = do
---   invasions <- sequence $ replicate 1000 $ invade b
---   return $ foldl f 0.0 invasions where
---   f p r = if attackers r > 1 then p + (1/1000) else p
-
 type Prob = Double
 data Battle = Battle { a :: Army, d :: Army , p :: Prob}
   deriving (Show)
 
-battleP :: Battle -> [Battle]
-battleP (Battle a d p)
+instance Ord Battle where
+  compare (Battle a1 d1 _) (Battle a2 d2 _)
+   | a1 > a2 || (a1 == a2 && d1 > d2) = GT
+   | a1 < a2 || (a1 == a2 && d1 < d2) = LT
+   | otherwise                        = EQ
+
+instance Eq Battle where
+  x == y = (a x) == (a y) && (d x) == (d y)
+
+instance Monoid Battle where
+  mempty = Battle 0 0 0
+  mappend x y = x {p = (p x + p y)}
+
+type Timestream = [Battle]
+
+-- instance Monoid Timestream where
+tempty = []
+tappend = foldr bcons
+tconcat = foldr tappend tempty
+
+bcons :: Battle -> Timestream -> Timestream
+bcons b []    = [b]
+bcons b (prev:bs)
+  | b == prev = b <> prev : bs
+  | b > prev  = b : prev : bs
+  | otherwise = prev : bcons b bs
+
+attack :: Battle -> Timestream
+attack (Battle a d p)
   | nDice == (3,2) = [Battle  a    (d-2) (2890/7776 * p),
                       Battle (a-1) (d-1) (2611/7776 * p),
                       Battle (a-2)  d    (2275/7776 * p)]
@@ -84,16 +57,30 @@ battleP (Battle a d p)
   where
     nDice = ((min 3 (a - 1)), min 2 d)
 
-invadeP :: Battle -> [Battle]
-invadeP b@(Battle a d p)
+invade :: Battle -> Timestream
+invade b@(Battle a d p)
   | a < 2 || d == 0 = [b]
-  | otherwise = concat $ map invadeP $ battleP b
+  | otherwise = tconcat $ map invade $ attack b
 
-exactSuccessProb :: Battlefield -> Double
-exactSuccessProb (Battlefield a d) = sum [p b | b <- wins]
+minvade :: Timestream -> Timestream
+minvade bs = tconcat [invade b | b <- bs]
+
+campaign :: Army -> [Army] -> Timestream -> [Timestream]
+campaign att def [] = campaign att def [Battle (att+1) 0 1]
+campaign _ [] _ = []
+campaign attackers (defenders:ds) t =
+  res : campaign attackers ds res
+  where res = tconcat [invade $ Battle ((a b)-1) defenders (p b) | b <- t]
+
+success (Battle _ d _) = (d==0)
+
+successProb :: Army -> Army -> Double
+successProb a d = sum [p b | b <- wins]
   where
-    wins = filter success $ invadeP $ Battle a d 1
-    success (Battle a d _) = (d==0)
+    wins = filter success $ invade $ Battle a d 1
+
+results :: [Timestream] -> [Double]
+results = map (\t -> sum [p b | b <- (filter success t)])
 
 -- main :: IO ()
 -- main = do
@@ -101,9 +88,6 @@ exactSuccessProb (Battlefield a d) = sum [p b | b <- wins]
 --   a <- readLn
 --   putStr "Defenders: "
 --   d <- readLn
---   -- res <- evalRandIO $ successProb $ Battlefield a d
---   -- putStr "Simulated: "
---   -- putStrLn (show res)
---   putStr "Exact: "
---   putStrLn $ show $ exactSuccessProb $ Battlefield a d
+--   putStr "Chance of Success: "
+--   putStrLn $ show $ successProb a d
 
